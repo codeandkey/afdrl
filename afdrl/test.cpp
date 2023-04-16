@@ -1,4 +1,5 @@
 #include "test.h"
+#include "log.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -10,6 +11,8 @@
 #include "env.h"
 #include "messages.h"
 #include "model.h"
+
+#include <iomanip>
 
 using namespace std;
 
@@ -28,7 +31,7 @@ int test(int rank, int size, Args args)
     Agent agent(model, env, args);
 
     // Print a message indicating the testing loop started.
-    cout << "Testing loop started." << endl;
+    log_info("Started testing process");
 
     // Set an initial time stamp.
     auto start_time = chrono::high_resolution_clock::now();
@@ -53,8 +56,16 @@ int test(int rank, int size, Args args)
 
         // Receive serialized model parameters from the scheduler.
         std::vector<char> parameter_buf = recvBuffer(0);
+        agent.model.deserialize(parameter_buf);
+        agent.model.eval();
 
-        // Receive model update count and trajectories
+        if (args.gpu_id >= 0)
+        {
+            model.to(torch::kCUDA);
+        }
+
+        // Receive federation status
+        int F_time = recvInt(0);
         int update_count = recvInt(0);
         int trajectories = recvInt(0);
 
@@ -73,15 +84,18 @@ int test(int rank, int size, Args args)
             reward_total_sum += reward_sum;
             float mean_reward = reward_total_sum / num_tests;
 
+            log_info("F_time %d | eps len %d | reward %f | mean reward %f", F_time, agent.eps_len, reward_sum, mean_reward);
+
             // Print the elapsed CPU time in HH:MM:SS format, episode length, total reward and mean reward.
-            cout << "Elapsed time: " << elapsed_time / 1000 / 60 / 60 << ":" << elapsed_time / 1000 / 60 % 60 << ":" << elapsed_time / 1000 % 60 << " | ";
+            /*cout << "Elapsed time: " << setw(2) << elapsed_time / 1000 / 60 / 60 << ":" << setw(2) << elapsed_time / 1000 / 60 % 60 << ":" << setw(2) << elapsed_time / 1000 % 60 << " | ";
             cout << "Episode length: " << agent.eps_len << " | ";
             cout << "Total reward: " << reward_sum << " | ";
-            cout << "Mean reward: " << mean_reward << endl;
+            cout << "Mean reward: " << mean_reward << endl;*/
 
             // Reset the environment.
             agent.env.reset();
             agent.clear_actions();
+            agent.done = false;
 
             agent.eps_len = 0;
             reward_sum = 0;

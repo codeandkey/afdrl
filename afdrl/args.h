@@ -34,10 +34,10 @@ struct Args {
         display_test = true;
       } else if (arg == "-s" || arg == "--seed") {
         seed = std::stoi(argv[++i]);
-      } else if (arg == "--min-offline") {
-        min_offline = std::stoi(argv[++i]);
-      } else if (arg == "--max-offline") {
-        max_offline = std::stoi(argv[++i]);
+      } else if (arg == "-o" || arg == "--steps-ratio") {
+        steps_ratio = std::stoi(argv[++i]);
+      } else if (arg == "-v" || arg == "--steps-var") {
+        steps_var = std::stoi(argv[++i]);
       } else if (arg == "--min-offline-time") {
         min_offline_time = std::stoi(argv[++i]);
       } else if (arg == "--max-offline-time") {
@@ -54,6 +54,10 @@ struct Args {
         frame_stack = std::stoi(argv[++i]);
       } else if (arg == "--num-steps") {
         num_steps = std::stoi(argv[++i]);
+      } else if (arg == "--a3c-steps") {
+        a3c_steps = std::stoi(argv[++i]);
+      } else if (arg == "--debug") {
+        debug = 1;
       } else {
         std::cout << "Unknown argument: " << arg << std::endl;
         usage(argv);
@@ -100,12 +104,6 @@ struct Args {
     std::cout << "\t-s, --seed" << std::endl;
     std::cout << "\t\tRandom seed." << std::endl;
 
-    std::cout << "\t-o, --min-offline" << std::endl;
-    std::cout << "\t\tMinimum number of offline steps." << std::endl;
-
-    std::cout << "\t-p, --max-offline" << std::endl;
-    std::cout << "\t\tMaximum number of offline steps." << std::endl;
-
     std::cout << "\t-c, --num-clients" << std::endl;
     std::cout << "\t\tNumber of simulated clients." << std::endl;
 
@@ -113,7 +111,7 @@ struct Args {
     std::cout << "\t\tLearning rate." << std::endl;
 
     std::cout << "\t--num-steps" << std::endl;
-    std::cout << "\t\tNumber of steps per client per update." << std::endl;
+    std::cout << "\t\tNumber of experiment F timesteps." << std::endl;
 
     std::cout << "\t--frame-stack" << std::endl;
     std::cout << "\t\tNumber of frames to stack in model input." << std::endl;
@@ -124,11 +122,25 @@ struct Args {
     std::cout << "\t--tau" << std::endl;
     std::cout << "\t\tSoft update factor." << std::endl;
 
+    std::cout << "\t--a3c-steps" << std::endl;
+    std::cout << "\t\tA3C forward steps per model update" << std::endl;
+
+    std::cout << "\t--debug" << std::endl;
+    std::cout << "\t\tEnable debug mode." << std::endl;
+
+    // Scheduling arguments
+
     std::cout << "\t--min-offline-time" << std::endl;
     std::cout << "\t\tMinimum number of offline global time steps per client." << std::endl;
 
     std::cout << "\t--max-offline-time" << std::endl;
     std::cout << "\t\tMaximum number of offline global time steps per client." << std::endl;
+
+    std::cout << "\t-o, --steps-ratio" << std::endl;
+    std::cout << "\t\tExpected environment time steps per federation step." << std::endl;
+
+    std::cout << "\t--steps-var" << std::endl;
+    std::cout << "\t\tVariation in local timesteps." << std::endl;
 
     std::cout << std::endl;
   }
@@ -148,15 +160,17 @@ struct Args {
   bool display_test = false; // Render test episodes
   int seed = 0; // Random seed
 
-  int min_offline = 20; // Minimum number of offline steps
-  int max_offline = 150; // Maximum number of offline steps
+  int steps_ratio = 100; // Local environment steps per federation step
+  int steps_var = 100; // Variation in local timesteps
   int min_offline_time = 1; // Minimum number of offline global time steps
   int max_offline_time = 10; // Maximum number of offline global time steps
 
-  int num_clients = 64; // Number of simulated clients
-  int num_steps = 20; // Number of steps per client per update
+  int num_clients = 4; // Number of simulated clients
+  int num_steps = 10000; // Total federation time steps
+  int a3c_steps = 20; // A3C forward steps per model update
+  int debug = 0; // Debug mode
 
-  float lr = 0.0001; // Learning rate
+  float lr = 0.0002; // Learning rate
 
   float gamma = 0.99; // Discount factor
   float tau = 1.0; // GAE factor

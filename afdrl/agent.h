@@ -47,7 +47,7 @@ class Agent {
   public:
 
     // LSTM hx, cx state
-    torch::Tensor hx, cx;
+    torch::autograd::Variable hx, cx;
 
     // Environment
     AtariEnv& env;
@@ -69,7 +69,7 @@ class Agent {
     int eps_len = 0;
     
     // Values
-    std::vector<torch::Tensor> values;
+    std::vector<torch::autograd::Variable> values;
 
     // Entropies
     std::vector<torch::Tensor> entropies;

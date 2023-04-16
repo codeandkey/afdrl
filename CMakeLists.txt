@@ -10,6 +10,8 @@ find_package(Torch REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenCV REQUIRED)
 
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffat-lto-objects")
+
 set (CMAKE_BUILD_TYPE Debug)
 set (CMAKE_CXX_STANDARD 17)
 
@@ -20,6 +22,7 @@ add_executable(afdrl
   afdrl/train.cpp
   afdrl/test.cpp
   afdrl/agent.cpp
+  afdrl/log.cpp
 )
 
 target_link_libraries(afdrl

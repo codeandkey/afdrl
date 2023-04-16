@@ -11,6 +11,7 @@ static const int MSG_GLOBAL_MODEL = 0;
 static const int MSG_GET_SCHEDULE = 2;
 static const int MSG_SCHEDULE = 3;
 static const int MSG_STOP = 5;
+static const int MSG_SLEEP = 6;
 
 /**
  * Receive an integer from an MPI process.

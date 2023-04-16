@@ -40,7 +40,7 @@ torch::Tensor imageToTensor(const Mat &image) {
 
   // Convert the image to a tensor
   torch::Tensor tensor_image =
-      torch::from_blob(resized_image.data, {1, 80, 80}, torch::kByte);
+      torch::from_blob(resized_image.data, {1, 80, 80}, torch::TensorOptions().dtype(torch::kByte));
 
   // Normalize the image
   tensor_image = tensor_image.toType(torch::kFloat);
@@ -109,7 +109,7 @@ std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
   Mat image = aleToImage(*ale);
 
   // Add the new frame to the frame skip deque
-  frame_stack_deque.push_back(imageToTensor(image));
+  frame_stack_deque.push_back(imageToTensor(image).detach());
   frame_stack_deque.pop_front();
 
   // Return the concatenated frames from the frame skip deque

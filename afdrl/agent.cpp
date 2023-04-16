@@ -11,11 +11,16 @@ Agent::Agent(LSTMModel& model, AtariEnv& env, Args args)
 
 void Agent::action_test()
 {
+  auto st = state.unsqueeze(0);
+
   // If the environment is done, reset the cx and hx tensors to 0.
   if (done)
   {
-    hx = torch::zeros({1, 512});
-    cx = torch::zeros({1, 512});
+    hx = torch::zeros({1, 512}, torch::requires_grad());
+    cx = torch::zeros({1, 512}, torch::requires_grad());
+  } else {
+    hx = hx.detach();
+    cx = cx.detach();
   }
 
   // If the gpu ID is set, move the hx and cx tensors to the gpu.
@@ -23,10 +28,11 @@ void Agent::action_test()
   {
     hx = hx.to(torch::kCUDA);
     cx = cx.to(torch::kCUDA);
+    st = st.to(torch::kCUDA);
   }
 
   // Get the value, logit, and (hx, cx) tensors from the model.
-  auto output = model.forward(torch::TensorList({state.unsqueeze(0), hx, cx})).toTensorList();
+  auto output = model.forward(torch::TensorList({st, hx, cx})).toTensorList();
 
   // Get the value, logit, and new (hx, cx) tensors from the output.
   auto value = output.get(0);
@@ -60,22 +66,18 @@ void Agent::action_test()
 
 void Agent::action_train()
 {
-  // If the environment is done, reset the cx and hx tensors to 0.
-  if (done)
-  {
-    hx = torch::zeros({1, 1024});
-    cx = torch::zeros({1, 512});
-  }
+  auto st = state.unsqueeze(0);
 
   // If the gpu ID is set, move the hx and cx tensors to the gpu.
   if (args.gpu_id >= 0)
   {
     hx = hx.to(torch::kCUDA);
     cx = cx.to(torch::kCUDA);
+    st = st.to(torch::kCUDA);
   }
 
   // Get the value, logit, and (hx, cx) tensors from the model.
-  auto output = model.forward(torch::TensorList({state.unsqueeze(0), hx, cx})).toTensorList();
+  auto output = model.forward(torch::TensorList({st, hx, cx})).toTensorList();
 
   // Get the value, logit, and new (hx, cx) tensors from the output.
   auto value = output.get(0);
@@ -87,20 +89,20 @@ void Agent::action_train()
 
   // Get the probability distribution from the logit tensor.
   auto prob = torch::softmax(logit, 1);
-
-  // Get the log probability distribution from the logit tensor.
   auto log_prob = torch::log_softmax(logit, 1);
+
+  auto action = prob.multinomial(1).data();
+
+  log_prob = log_prob.gather(1, action.detach());
   log_probs.push_back(log_prob);
 
   // Get the entropy from the prob and log_prob tensors.
-  auto entropy = -(prob * log_prob).sum(1, true);
+  auto entropy = -(prob * log_prob).sum(1);
   entropies.push_back(entropy);
   
   // Sample an action from the probability distribution.
-  int action = torch::multinomial(prob, 1).item<int64_t>();
-
   // Step the environment
-  auto result = env.step(action);
+  auto result = env.step(action.item().toInt());
 
   // Get the new state, reward, and done tensors from the result.
   state = std::get<0>(result);

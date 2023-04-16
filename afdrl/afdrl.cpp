@@ -3,6 +3,7 @@
 
 #include <mpi.h>
 
+#include "log.h"
 #include "args.h"
 #include "model.h"
 #include "train.h"
@@ -42,6 +43,9 @@ int main(int argc, char** argv)
 
     return 0;
   }
+
+  if (args.debug)
+    log_set_debug();
 
   // If we are the master process, start the scheduler loop.
   if (rank == 0)
