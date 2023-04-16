@@ -88,23 +88,15 @@ public:
    * @param tau The weight of the other model.
    */
   void add(const LSTMModel &other, float tau) {
-    auto sum_params = [](const LSTMModel &md) -> float {
-      float sum = 0;
-      for (auto &param : md.parameters()) {
-        sum += param.sum().item<float>();
-      }
-      return sum;
-    };
+    for (auto &param : named_parameters()) {
+      torch::Tensor t;
+      torch::Tensor current = param.value().clone();
 
-    // Add the convolutional layers.
-    addConv(conv1, other.conv1, tau);
-    addConv(conv2, other.conv2, tau);
-    addConv(conv3, other.conv3, tau);
-    addConv(conv4, other.conv4, tau);
-
-    // Add the actor and critic linear layers.
-    addLinear(actor_linear, other.actor_linear, tau);
-    addLinear(critic_linear, other.critic_linear, tau);
+      param.value().requires_grad_(false);
+      param.value() += other.named_parameters()[param.key()] * tau;
+      param.value().detach_();
+      param.value().requires_grad_(true);
+    }
   }
 
   /**
