@@ -46,7 +46,7 @@ torch::Tensor imageToTensor(const Mat &image) {
   tensor_image = tensor_image.toType(torch::kFloat);
   tensor_image = tensor_image.div(255);
 
-  return tensor_image;
+  return tensor_image.detach();
 }
 
 using namespace ale;

@@ -75,9 +75,9 @@ int train(int rank, int size, Args args)
 
         // TODO: ideal if we can share this, but replacing param groups seems broken
         // Initialize the optimizer.
-        torch::optim::SGD optimizer(
+        torch::optim::Adam optimizer(
             agent.model.parameters(),
-            torch::optim::SGDOptions(args.lr)
+            torch::optim::AdamOptions(args.lr)
         );
 
         if (args.gpu_id >= 0)
@@ -193,7 +193,7 @@ int train(int rank, int size, Args args)
                 throw runtime_error("model params are not leaves");
 
             // Clip the gradients.
-            //torch::nn::utils::clip_grad_norm_(agent.model.parameters(), 40.0f); // TODO: make this a parameter
+            torch::nn::utils::clip_grad_norm_(agent.model.parameters(), 40.0f); // TODO: make this a parameter
 
             // Update the model parameters.
             optimizer.step();
