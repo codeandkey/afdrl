@@ -1,6 +1,7 @@
 #include "agent.h"
 
 #include <iostream>
+#include <torch/serialize.h>
 
 using namespace std;
 
@@ -45,6 +46,8 @@ void Agent::action_test()
   
   // Get the greedy action from the probability distribution.
   int action = torch::argmax(prob, 1).item<int64_t>();
+
+  //std::cerr << "policy " << prob << " action " << action << std::endl;
 
   // Step the environment
   auto result = env.step(action);

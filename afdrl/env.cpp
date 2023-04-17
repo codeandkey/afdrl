@@ -16,44 +16,32 @@
 using namespace cv;
 using namespace std;
 
-Mat aleToImage(ale::ALEInterface &ale) {
-  // Get the screen from the ALE environment
-  const ale::ALEScreen &screen = ale.getScreen();
+torch::Tensor observe(ale::ALEInterface& ale)
+{
+  vector<unsigned char> bw;
+  ale.getScreenGrayscale(bw);
 
-  // Get the screen dimensions
-  int height = screen.height();
-  int width = screen.width();
+  int height = ale.getScreen().height();
+  int width = ale.getScreen().width();
 
-  // Convert the screen to a Mat
-  return Mat(height, width, CV_8UC3, screen.getArray());
-}
+  cv::Mat image(height, width, CV_8UC1, bw.data());
+  cv::Mat resized;
 
-// Process an image from an ALE environment, rescaling it to 1 channel, 80 x 80
-torch::Tensor imageToTensor(const Mat &image) {
-  // Convert the image to grayscale
-  Mat gray_image;
-  cvtColor(image, gray_image, COLOR_BGR2GRAY);
+  cv::resize(image, resized, cv::Size(80, 80), cv::INTER_LINEAR);
 
-  // Resize the image to 80 x 80
-  Mat resized_image;
-  resize(gray_image, resized_image, Size(80, 80));
-
-  // Convert the image to a tensor
-  torch::Tensor tensor_image =
-      torch::from_blob(resized_image.data, {1, 80, 80}, torch::TensorOptions().dtype(torch::kByte));
-
-  // Normalize the image
-  tensor_image = tensor_image.toType(torch::kFloat);
-  tensor_image = tensor_image.div(255);
-
-  return tensor_image.detach();
+  return torch::from_blob(resized.data, {1, 80, 80}, torch::TensorOptions().dtype(torch::kByte)).toType(torch::kFloat).div(255);
 }
 
 using namespace ale;
 
 AtariEnv::AtariEnv(const std::string &rom_path, bool display_screen,
-                   int frame_skip, int frame_stack, int max_episode_length) {
+                   int frame_skip, int frame_stack, int max_episode_length, int seed) {
   ale = new ale::ALEInterface();
+
+  if (seed == -1)
+    seed = time(NULL);
+
+  ale->setInt("random_seed", seed);
   ale->setBool("display_screen", display_screen);
   ale->loadROM(rom_path);
 
@@ -78,12 +66,11 @@ torch::Tensor AtariEnv::reset() {
   // Clear the frame skip deque
   frame_stack_deque.clear();
 
-  // Get the initial screen from the environment
-  Mat image = aleToImage(*ale);
+  torch::Tensor obs = observe(*ale);
 
   // Initialize the frame skip deque with the initial screen
   for (int i = 0; i < frame_stack; i++) {
-    frame_stack_deque.push_back(imageToTensor(image));
+    frame_stack_deque.push_back(obs);
   }
 
   // Return the concatenated frames from the frame skip deque
@@ -101,16 +88,12 @@ std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
 
   for (int i = 0; i < frame_skip; i++) {
     reward += ale->act(actions[action]);
+
+    frame_stack_deque.push_back(observe(*ale));
+    frame_stack_deque.pop_front();
   }
 
   bool terminal = ale->game_over();
-
-  // Get the new screen from the environment
-  Mat image = aleToImage(*ale);
-
-  // Add the new frame to the frame skip deque
-  frame_stack_deque.push_back(imageToTensor(image).detach());
-  frame_stack_deque.pop_front();
 
   // Return the concatenated frames from the frame skip deque
   std::vector<torch::Tensor> frame_stack_deque_vec(frame_stack_deque.begin(),
