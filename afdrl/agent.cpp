@@ -100,7 +100,7 @@ void Agent::action_train()
 
   auto action = prob.multinomial(1).data();
 
-  std::cerr << "policy " << prob << " action " << action << std::endl;
+  std::cerr << "policy " << prob << " action " << action <<  " entropy " << entropy << std::endl;
 
   log_prob = log_prob.gather(1, action.detach());
   log_probs.push_back(log_prob);

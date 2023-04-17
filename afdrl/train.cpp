@@ -153,7 +153,7 @@ int train(int rank, int size, Args args)
 
             torch::Tensor policy_loss = torch::zeros({1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
             torch::Tensor value_loss = torch::zeros({1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
-            torch::Tensor gae = torch::zeros({1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
+            torch::Tensor gae = torch::zeros({1, 1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
             torch::Tensor delta, log_prob, value, adv;
 
             R = R.detach(); // possibly no detach
@@ -175,7 +175,7 @@ int train(int rank, int size, Args args)
                 // Compute the policy loss.
                 log_prob = agent.log_probs[i];
                 policy_loss = policy_loss - log_prob * gae.detach();
-                policy_loss = policy_loss - 0.01f * agent.entropies[i];
+                policy_loss = policy_loss - 1 * agent.entropies[i];
             }
 
             // Zero the gradients.
@@ -184,7 +184,7 @@ int train(int rank, int size, Args args)
 
             // Backpropagate the loss.
             torch::Tensor loss = policy_loss + 0.5f * value_loss;
-            loss.sum().backward();
+            loss.backward();//sum().backward();
 
             //std::cout << "policy_loss grad " << policy_loss.grad() << std::endl;
 

@@ -43,6 +43,11 @@ public:
     conv4 = torch::nn::Conv2d(options4);
     maxp4 = torch::nn::MaxPool2d(torch::nn::MaxPool2dOptions(2));
 
+    bn1 = torch::nn::BatchNorm2d(32);
+    bn2 = torch::nn::BatchNorm2d(32);
+    bn3 = torch::nn::BatchNorm2d(64);
+    bn4 = torch::nn::BatchNorm2d(64);
+
     lstm = torch::nn::LSTMCell(torch::nn::LSTMCellOptions(1024, 512));
 
     // Initialize the actor and critic linear layers.
@@ -73,6 +78,11 @@ public:
     register_module("maxp2", maxp2);
     register_module("maxp3", maxp3);
     register_module("maxp4", maxp4);
+
+    register_module("bn1", bn1);
+    register_module("bn2", bn2);
+    register_module("bn3", bn3);
+    register_module("bn4", bn4);
 
     // Register the LSTM layer as a submodule.
     register_module("lstm", lstm);
@@ -225,11 +235,11 @@ public:
     // Pass the input through each convolutional layer, followed by a max
     // pooling layer.
     inputs = torch::relu(conv1->forward(inputs));
-    inputs = maxp1->forward(inputs);
+    inputs = bn1(maxp1->forward(inputs));
     inputs = torch::relu(conv2->forward(inputs));
-    inputs = maxp2->forward(inputs);
+    inputs = bn2(maxp2->forward(inputs));
     inputs = torch::relu(conv3->forward(inputs));
-    inputs = maxp3->forward(inputs);
+    inputs = bn3(maxp3->forward(inputs));
     inputs = torch::relu(conv4->forward(inputs));
     inputs = maxp4->forward(inputs);
 
@@ -260,6 +270,7 @@ public:
   torch::nn::MaxPool2d maxp1 = nullptr, maxp2 = nullptr, maxp3 = nullptr,
                        maxp4 = nullptr; // 2, 2, 2, 2
   torch::nn::LSTMCell lstm = nullptr;   // 1024, 512
+  torch::nn::BatchNorm2d bn1 = nullptr, bn2 = nullptr, bn3 = nullptr, bn4 = nullptr;
 
   int n_actions; // The number of actions the agent can take.
 };
