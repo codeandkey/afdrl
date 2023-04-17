@@ -17,7 +17,7 @@ using namespace std;
 int train(int rank, int size, Args args)
 {
     // Initialize local environment
-    AtariEnv env(args.env_name, false);
+    AtariEnv env(args.env_name, true);
 
     LSTMModel model(
         env.get_screen_channels(),
@@ -170,11 +170,11 @@ int train(int rank, int size, Args args)
 
                 // Compute the generalized advantage estimate.
                 delta = agent.rewards[i] + args.gamma * agent.values[i + 1] - agent.values[i];
-                gae = gae.detach() * args.gamma * args.tau + delta; // possibly no detach
+                gae = gae * args.gamma * args.tau + delta; // possibly no detach
 
                 // Compute the policy loss.
                 log_prob = agent.log_probs[i];
-                policy_loss = policy_loss - log_prob * gae;
+                policy_loss = policy_loss - log_prob * gae.detach();
                 policy_loss = policy_loss - 0.01f * agent.entropies[i];
             }
 

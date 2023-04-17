@@ -94,14 +94,16 @@ void Agent::action_train()
   auto prob = torch::softmax(logit, 1);
   auto log_prob = torch::log_softmax(logit, 1);
 
-  auto action = prob.multinomial(1).data();
-
-  log_prob = log_prob.gather(1, action.detach());
-  log_probs.push_back(log_prob);
-
   // Get the entropy from the prob and log_prob tensors.
   auto entropy = -(prob * log_prob).sum(1);
   entropies.push_back(entropy);
+
+  auto action = prob.multinomial(1).data();
+
+  std::cerr << "policy " << prob << " action " << action << std::endl;
+
+  log_prob = log_prob.gather(1, action.detach());
+  log_probs.push_back(log_prob);
   
   // Sample an action from the probability distribution.
   // Step the environment
