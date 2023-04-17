@@ -76,7 +76,7 @@ torch::Tensor AtariEnv::reset() {
   // Return the concatenated frames from the frame skip deque
   std::vector<torch::Tensor> frame_stack_deque_vec(frame_stack_deque.begin(),
                                                   frame_stack_deque.end());
-  return torch::cat(frame_stack_deque_vec, -1);
+  return torch::cat(frame_stack_deque_vec);
 }
 
 std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
@@ -98,7 +98,7 @@ std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
   // Return the concatenated frames from the frame skip deque
   std::vector<torch::Tensor> frame_stack_deque_vec(frame_stack_deque.begin(),
                                                   frame_stack_deque.end());
-  return std::make_tuple(torch::cat(frame_stack_deque_vec, -1), reward,
+  return std::make_tuple(torch::cat(frame_stack_deque_vec), reward,
                          terminal);
 }
 

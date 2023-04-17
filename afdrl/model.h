@@ -12,10 +12,10 @@
 
 class LSTMModel : public torch::nn::Module {
 public:
-  LSTMModel(int channels, int n_actions) {
+  LSTMModel(int channels, int n_actions, int stack=3) {
     this->n_actions = n_actions;
 
-    torch::nn::Conv2dOptions options1(channels, 32, 5);
+    torch::nn::Conv2dOptions options1(channels * stack, 32, 5);
     options1.stride(1);
     options1.padding(2);
 
@@ -231,6 +231,8 @@ public:
   torch::IValue forward(torch::IValue iv) {
     auto lst = iv.toTensorList();
     torch::Tensor inputs = lst[0], hx = lst[1], cx = lst[2];
+
+    //std::cout << "shape " << inputs.sizes() << std::endl;
 
     // Pass the input through each convolutional layer, followed by a max
     // pooling layer.

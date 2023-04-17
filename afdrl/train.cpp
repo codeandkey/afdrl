@@ -175,7 +175,7 @@ int train(int rank, int size, Args args)
                 // Compute the policy loss.
                 log_prob = agent.log_probs[i];
                 policy_loss = policy_loss - log_prob * gae.detach();
-                policy_loss = policy_loss - 1 * agent.entropies[i];
+                policy_loss = policy_loss - 0.45 * agent.entropies[i];
             }
 
             // Zero the gradients.
