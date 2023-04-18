@@ -50,17 +50,60 @@ public:
 
     lstm = torch::nn::LSTMCell(torch::nn::LSTMCellOptions(1024, 512));
 
+    // Initialize conv layer weights
+    float fan_in = conv1->weight.size(1) * conv1->weight.size(2) *
+                     conv1->weight.size(3);
+    float fan_out = conv1->weight.size(0) * conv1->weight.size(2) *
+                      conv1->weight.size(3);
+
+    float w_bound = std::sqrt(6.0f / (fan_in + fan_out));
+    torch::nn::init::uniform_(conv1->weight, -w_bound, w_bound);
+    torch::nn::init::constant_(conv1->bias, 0);
+
+    fan_in = conv2->weight.size(1) * conv2->weight.size(2) *
+                     conv2->weight.size(3);
+    fan_out = conv2->weight.size(0) * conv2->weight.size(2) *
+                      conv2->weight.size(3);
+
+    w_bound = std::sqrt(6.0f / (fan_in + fan_out));
+    torch::nn::init::uniform_(conv2->weight, -w_bound, w_bound);
+    torch::nn::init::constant_(conv2->bias, 0);
+
+    fan_in = conv3->weight.size(1) * conv3->weight.size(2) *
+                     conv3->weight.size(3);
+    fan_out = conv3->weight.size(0) * conv3->weight.size(2) *
+                      conv3->weight.size(3);
+
+    w_bound = std::sqrt(6.0f / (fan_in + fan_out));
+    torch::nn::init::uniform_(conv3->weight, -w_bound, w_bound);
+    torch::nn::init::constant_(conv3->bias, 0);
+
+    fan_in = conv4->weight.size(1) * conv4->weight.size(2) *
+                     conv4->weight.size(3);
+    fan_out = conv4->weight.size(0) * conv4->weight.size(2) *
+                      conv4->weight.size(3);
+
+    w_bound = std::sqrt(6.0f / (fan_in + fan_out));
+    torch::nn::init::uniform_(conv4->weight, -w_bound, w_bound);
+    torch::nn::init::constant_(conv4->bias, 0);
+
+
     // Initialize the actor and critic linear layers.
     actor_linear = torch::nn::Linear(512, n_actions);
     critic_linear = torch::nn::Linear(512, 1);
 
-    // Initialize the actor and critic weights with Normal distribution of mean
-    // 0 and variance 1.
-    torch::nn::init::normal_(actor_linear->weight, 0, 1);
-    torch::nn::init::normal_(critic_linear->weight, 0, 1);
+    fan_in =  actor_linear->weight.size(1);
+    fan_out = actor_linear->weight.size(0);
+    w_bound = std::sqrt(6.0f / (fan_in + fan_out));
 
-    // Initialize the actor and critic biases with 0.
+    torch::nn::init::uniform_(actor_linear->weight, -w_bound, w_bound);
     torch::nn::init::constant_(actor_linear->bias, 0);
+
+    fan_in =  critic_linear->weight.size(1);
+    fan_out = critic_linear->weight.size(0);
+    w_bound = std::sqrt(6.0f / (fan_in + fan_out));
+
+    torch::nn::init::uniform_(critic_linear->weight, -w_bound, w_bound);
     torch::nn::init::constant_(critic_linear->bias, 0);
 
     // Register the actor and critic linear layers as submodules.
@@ -236,13 +279,13 @@ public:
 
     // Pass the input through each convolutional layer, followed by a max
     // pooling layer.
-    inputs = torch::relu(conv1->forward(inputs));
+    inputs = torch::elu(conv1->forward(inputs));
     inputs = bn1(maxp1->forward(inputs));
-    inputs = torch::relu(conv2->forward(inputs));
-    inputs = bn2(maxp2->forward(inputs));
-    inputs = torch::relu(conv3->forward(inputs));
-    inputs = bn3(maxp3->forward(inputs));
-    inputs = torch::relu(conv4->forward(inputs));
+    inputs = torch::elu(conv2->forward(inputs));
+    inputs = maxp2->forward(inputs);
+    inputs = torch::elu(conv3->forward(inputs));
+    inputs = maxp3->forward(inputs);
+    inputs = torch::elu(conv4->forward(inputs));
     inputs = maxp4->forward(inputs);
 
     // Reshape the input to be 1 x 1 x 1024 (required by LSTM).

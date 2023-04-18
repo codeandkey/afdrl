@@ -25,7 +25,7 @@ public:
      * @param frame_skip The number of frames to skip.
      * @param max_episode_length The maximum number of steps per episode.
      */
-    AtariEnv(const std::string& rom_path, bool display_screen, int frame_skip=4, int frame_stack=3, int max_episode_length=10000, int seed=-1);
+    AtariEnv(const std::string& rom_path, bool display_screen, int frame_skip=3, int frame_stack=3, int max_episode_length=10000, int seed=-1);
 
     /**
      * Destructs the Atari environment.

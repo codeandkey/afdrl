@@ -4,6 +4,7 @@
 #include <c10/core/TensorOptions.h>
 #include <iostream>
 #include <stdexcept>
+#include <deque>
 #include <mpi.h>
 
 #include "agent.h"
@@ -16,6 +17,15 @@ using namespace std;
 
 int train(int rank, int size, Args args)
 {
+    // Initialize rolling entropy window and parameters
+    const int entropy_window_size = 100;
+    deque<float> entropy_window;
+    float entropy_avg = 0.0;
+    float min_entropy = 0.01f;
+    float ctr_entropy = 0.05f;
+    float max_entropy = 0.4f;
+    float entropy_slope = 50.0f;
+
     // Initialize local environment
     AtariEnv env(args.env_name, true);
 
@@ -29,6 +39,12 @@ int train(int rank, int size, Args args)
         env.get_screen_channels(),
         env.get_num_actions()
     );
+
+    if (args.gpu_id >= 0)
+    {
+      model.to(torch::kCUDA);
+      init_model.to(torch::kCUDA);
+    }
 
     // Initialize the agent.
     Agent agent(model, env, args);
@@ -66,6 +82,8 @@ int train(int rank, int size, Args args)
 
         // Receive the model parameters
         std::vector<char> parameter_buf = recvBuffer(0);
+        agent.model.to(torch::kCPU);
+        init_model.to(torch::kCPU);
         agent.model.deserialize(parameter_buf);
         init_model.deserialize(parameter_buf);
 
@@ -75,15 +93,15 @@ int train(int rank, int size, Args args)
 
         // TODO: ideal if we can share this, but replacing param groups seems broken
         // Initialize the optimizer.
-        torch::optim::Adam optimizer(
+        torch::optim::SGD optimizer(
             agent.model.parameters(),
-            torch::optim::AdamOptions(args.lr)
+            torch::optim::SGDOptions(args.lr)
         );
 
         if (args.gpu_id >= 0)
         {
-            init_model.to(torch::kCUDA);
-            agent.model.to(torch::kCUDA);
+          agent.model.to(torch::kCUDA);
+          init_model.to(torch::kCUDA);
         }
 
         log_debug("%d starting sched %d for %d steps", rank, client_index, schedule_length);
@@ -156,6 +174,14 @@ int train(int rank, int size, Args args)
             torch::Tensor gae = torch::zeros({1, 1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
             torch::Tensor delta, log_prob, value, adv;
 
+            if (args.gpu_id >= 0)
+            {
+                R = R.to(torch::kCUDA);
+                policy_loss = policy_loss.to(torch::kCUDA);
+                value_loss = value_loss.to(torch::kCUDA);
+                gae = gae.to(torch::kCUDA);
+            }
+
             R = R.detach(); // possibly no detach
 
             // Walk through the trajectory in reverse order.
@@ -175,7 +201,31 @@ int train(int rank, int size, Args args)
                 // Compute the policy loss.
                 log_prob = agent.log_probs[i];
                 policy_loss = policy_loss - log_prob * gae.detach();
-                policy_loss = policy_loss - 0.45 * agent.entropies[i];
+
+                // Compute the entropy loss, first updating the rolling entropy average.
+                
+                float cur_entropy = agent.entropies[i].item<float>();
+                entropy_window.push_front(cur_entropy);
+                if (entropy_window.size() > entropy_window_size)
+                {
+                    float oldest_entropy = entropy_window.back();
+                    entropy_window.pop_back();
+                    entropy_avg += (cur_entropy - oldest_entropy) / entropy_window_size;
+                } else {
+                  // we'll have to compute the average from scratch
+                  entropy_avg = 0;
+                  for (auto it = entropy_window.begin(); it != entropy_window.end(); ++it)
+                    entropy_avg += *it;
+                  entropy_avg /= entropy_window.size();
+                }
+
+                float entropy_loss = ctr_entropy - entropy_slope * (cur_entropy - entropy_avg);
+
+                entropy_loss = max(min_entropy, entropy_loss);
+                entropy_loss = min(max_entropy, entropy_loss);
+                std::cout << "entropy " << cur_entropy << " avg " << entropy_avg <<  " factor " << entropy_loss << std::endl;
+
+                policy_loss = policy_loss - entropy_loss * agent.entropies[i];
             }
 
             // Zero the gradients.
@@ -211,6 +261,7 @@ int train(int rank, int size, Args args)
         // Hack the agent model to find the delta
         agent.model.add(init_model, -1.0f);
 
+        agent.model.to(torch::kCPU);
         std::vector<char> delta_params = agent.model.serialize();
         sendInt(0, client_index);
         sendBuffer(0, delta_params);

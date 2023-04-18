@@ -27,6 +27,11 @@ int test(int rank, int size, Args args)
         env.get_num_actions()
     );
 
+    if (args.gpu_id >= 0)
+    {
+      model.to(torch::kCUDA);
+    }
+
     // Initialize the agent.
     Agent agent(model, env, args);
 
@@ -56,12 +61,13 @@ int test(int rank, int size, Args args)
 
         // Receive serialized model parameters from the scheduler.
         std::vector<char> parameter_buf = recvBuffer(0);
+        agent.model.to(torch::kCPU);
         agent.model.deserialize(parameter_buf);
         agent.model.eval();
 
         if (args.gpu_id >= 0)
         {
-            model.to(torch::kCUDA);
+            agent.model.to(torch::kCUDA);
         }
 
         // Receive federation status

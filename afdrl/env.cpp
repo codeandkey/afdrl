@@ -89,8 +89,8 @@ std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
   for (int i = 0; i < frame_skip; i++) {
     reward += ale->act(actions[action]);
 
-    frame_stack_deque.push_back(observe(*ale));
-    frame_stack_deque.pop_front();
+    frame_stack_deque.push_front(observe(*ale));
+    frame_stack_deque.pop_back();
   }
 
   bool terminal = ale->game_over();
