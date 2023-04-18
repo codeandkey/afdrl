@@ -25,6 +25,8 @@ int train(int rank, int size, Args args)
     float ctr_entropy = 0.05f;
     float max_entropy = 0.4f;
     float entropy_slope = 50.0f;
+    
+    int rw = 0;
 
     // Initialize local environment
     AtariEnv env(args.env_name, true);
@@ -93,9 +95,9 @@ int train(int rank, int size, Args args)
 
         // TODO: ideal if we can share this, but replacing param groups seems broken
         // Initialize the optimizer.
-        torch::optim::SGD optimizer(
+        torch::optim::Adam optimizer(
             agent.model.parameters(),
-            torch::optim::SGDOptions(args.lr)
+            torch::optim::AdamOptions(args.lr)
         );
 
         if (args.gpu_id >= 0)
@@ -134,6 +136,8 @@ int train(int rank, int size, Args args)
                 agent.action_train();
                 total_steps += 1;
 
+                rw += agent.reward;
+
                 if (agent.done)
                     break;
             }
@@ -141,8 +145,9 @@ int train(int rank, int size, Args args)
             if (agent.done)
             {
                 agent.state = agent.env.reset();
-                log_debug("train %d terminated episode len %d", rank, agent.eps_len);
+                log_debug("train %d terminated episode len %d rw %d", rank, agent.eps_len, rw);
                 agent.eps_len = 0;
+                rw = 0;
             }
 
             // Initialize the discounted return tensor.
