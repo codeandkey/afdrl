@@ -15,7 +15,7 @@ public:
   LSTMModel(int channels, int n_actions, int stack=3) {
     this->n_actions = n_actions;
 
-    torch::nn::Conv2dOptions options1(channels * stack, 32, 5);
+    torch::nn::Conv2dOptions options1(channels, 32, 5);
     options1.stride(1);
     options1.padding(2);
 
@@ -89,8 +89,8 @@ public:
 
 
     // Initialize the actor and critic linear layers.
-    actor_linear = torch::nn::Linear(512, n_actions);
-    critic_linear = torch::nn::Linear(512, 1);
+    actor_linear = torch::nn::Linear(1024, n_actions);
+    critic_linear = torch::nn::Linear(1024, 1);
 
     fan_in =  actor_linear->weight.size(1);
     fan_out = actor_linear->weight.size(0);
@@ -105,6 +105,21 @@ public:
 
     torch::nn::init::uniform_(critic_linear->weight, -w_bound, w_bound);
     torch::nn::init::constant_(critic_linear->bias, 0);
+
+    // Apply relu gain to conv weights
+    float gain = std::sqrt(2); // only valid for RELU!
+    
+    {
+      torch::NoGradGuard  g;
+      conv1->weight.mul_(gain);
+      conv2->weight.mul_(gain);
+      conv3->weight.mul_(gain);
+      conv4->weight.mul_(gain);
+    }
+
+    // Init LSTM weights
+    torch::nn::init::constant_(lstm->bias_ih, 0);
+    torch::nn::init::constant_(lstm->bias_hh, 0);
 
     // Register the actor and critic linear layers as submodules.
     register_module("actor_linear", actor_linear);
@@ -279,13 +294,13 @@ public:
 
     // Pass the input through each convolutional layer, followed by a max
     // pooling layer.
-    inputs = torch::elu(conv1->forward(inputs));
-    inputs = bn1(maxp1->forward(inputs));
-    inputs = torch::elu(conv2->forward(inputs));
+    inputs = torch::relu(bn1(conv1->forward(inputs)));
+    inputs = maxp1->forward(inputs);
+    inputs = torch::relu(bn2(conv2->forward(inputs)));
     inputs = maxp2->forward(inputs);
-    inputs = torch::elu(conv3->forward(inputs));
+    inputs = torch::relu(bn3(conv3->forward(inputs)));
     inputs = maxp3->forward(inputs);
-    inputs = torch::elu(conv4->forward(inputs));
+    inputs = torch::relu(conv4->forward(inputs));
     inputs = maxp4->forward(inputs);
 
     // Reshape the input to be 1 x 1 x 1024 (required by LSTM).
@@ -299,8 +314,8 @@ public:
 
     // Pass the first output from the LSTM through the actor and critic linear
     // layers.
-    auto actor_out = actor_linear->forward(hx);
-    auto critic_out = critic_linear->forward(hx);
+    auto actor_out = actor_linear->forward(inputs);
+    auto critic_out = critic_linear->forward(inputs);
 
     return torch::List<torch::Tensor>({critic_out, actor_out, hx, cx});
   }

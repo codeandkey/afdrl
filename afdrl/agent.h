@@ -69,7 +69,7 @@ class Agent {
     int eps_len = 0;
     
     // Values
-    std::vector<torch::autograd::Variable> values;
+    std::vector<torch::Tensor> values;
 
     // Entropies
     std::vector<torch::Tensor> entropies;

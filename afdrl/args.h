@@ -24,6 +24,8 @@ struct Args {
         gpu_id = std::stoi(argv[++i]);
       } else if (arg == "-e" || arg == "--env") {
         env_name = argv[++i];
+      } else if (arg == "--roms") {
+        roms = argv[++i];
       } else if (arg == "-t" || arg == "--test") {
         test_steps = std::stoi(argv[++i]);
       } else if (arg == "-f" || arg == "--frame-skip") {
@@ -58,6 +60,11 @@ struct Args {
         a3c_steps = std::stoi(argv[++i]);
       } else if (arg == "--debug") {
         debug = 1;
+      } else if (arg == "--optimizer")
+      {
+        optimizer = argv[++i];
+      } else if (arg == "--model")
+      {
       } else {
         std::cout << "Unknown argument: " << arg << std::endl;
         usage(argv);
@@ -128,6 +135,9 @@ struct Args {
     std::cout << "\t--debug" << std::endl;
     std::cout << "\t\tEnable debug mode." << std::endl;
 
+    std::cout << "\t--roms" << std::endl;
+    std::cout << "\t\tPath to the roms folder." << std::endl;
+
     // Scheduling arguments
 
     std::cout << "\t--min-offline-time" << std::endl;
@@ -142,6 +152,9 @@ struct Args {
     std::cout << "\t--steps-var" << std::endl;
     std::cout << "\t\tVariation in local timesteps." << std::endl;
 
+    std::cout << "\t--optimizer" << std::endl;
+    std::cout << "\t\tThe  optimizer to use. (sgd, rmsprop, adam)" << std::endl;
+
     std::cout << std::endl;
   }
 
@@ -149,9 +162,10 @@ struct Args {
 
   std::string log_file = "log.txt"; // Log file
   std::string results_file = "results.txt"; // Results file
+  std::string roms = "../roms/";
 
   int gpu_id = -1; // -1 = CPU, 0 = first GPU, 1 = second GPU, etc.
-  std::string env_name = "../roms/pong.bin"; // Environment name
+  std::string env_name = "pong"; // Environment name
 
   int test_steps = 100; // Number of test steps
   int frame_skip = 4; // Number of frames to skip between actions
@@ -170,8 +184,10 @@ struct Args {
   int a3c_steps = 20; // A3C forward steps per model update
   int debug = 0; // Debug mode
 
-  float lr = 0.0002; // Learning rate
+  float lr = 0.0001; // Learning rate
 
   float gamma = 0.99; // Discount factor
   float tau = 1.0; // GAE factor
+
+  std::string optimizer = "adam"; // Optimizer to use (sgd, rmsprop, adam)
 };

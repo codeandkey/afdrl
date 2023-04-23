@@ -100,9 +100,12 @@ void Agent::action_train()
 
   auto action = prob.multinomial(1).data();
 
-  std::cerr << "policy " << prob << " action " << action <<  " entropy " << entropy << std::endl;
+  //std::cout << "action " << action.item<int>() << " value " << value.item<float>() << " reward " << reward << " entropy " << entropy.item<float>() << "\n";
 
-  log_prob = log_prob.gather(1, action.detach());
+  //std::cerr << "policy " << prob << " action " << action <<  " entropy " << entropy << std::endl;
+  //std::cerr << "policy " << prob.toString() << std::endl;
+
+  log_prob = log_prob.gather(1, action);
   log_probs.push_back(log_prob);
   
   // Sample an action from the probability distribution.

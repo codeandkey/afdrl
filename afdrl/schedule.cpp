@@ -125,12 +125,12 @@ void merge_model(LSTMModel& dest, ClientSchedule& from)
   cout << "<===" << endl;
 }
 
-int schedule(int rank, int size, Args args)
+int schedule(int rank, int size, Args args, std::string rom_path, EnvConfig config)
 {
   mpi_size = size;
 
   // Initialize a shared global environment (for parameters)
-  AtariEnv* env = new AtariEnv(args.env_name, false);
+  AtariEnv* env = new AtariEnv(rom_path, config, -1, false);
 
   // Initialize the shared global model
   LSTMModel model(

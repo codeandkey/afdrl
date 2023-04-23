@@ -15,7 +15,7 @@
 
 using namespace std;
 
-int train(int rank, int size, Args args)
+int train(int rank, int size, Args args, std::string rom_path, EnvConfig config)
 {
     // Initialize rolling entropy window and parameters
     const int entropy_window_size = 100;
@@ -24,12 +24,12 @@ int train(int rank, int size, Args args)
     float min_entropy = 0.01f;
     float ctr_entropy = 0.05f;
     float max_entropy = 0.4f;
-    float entropy_slope = 50.0f;
+    float entropy_slope = 20.0f;
     
     int rw = 0;
 
     // Initialize local environment
-    AtariEnv env(args.env_name, true);
+    AtariEnv env(rom_path, config, args.seed + rank, false); // should be false
 
     LSTMModel model(
         env.get_screen_channels(),
@@ -93,12 +93,37 @@ int train(int rank, int size, Args args)
         //optimizer.param_groups()[0].params() = agent.model.parameters();
         agent.model.train();
 
+        // Generic optimizer declaration
+        torch::optim::Optimizer* optimizer = nullptr;
+
         // TODO: ideal if we can share this, but replacing param groups seems broken
         // Initialize the optimizer.
-        torch::optim::Adam optimizer(
+        /*torch::optim::Adam optimizer(
             agent.model.parameters(),
             torch::optim::AdamOptions(args.lr)
-        );
+        );*/
+
+        if (args.optimizer == "sgd")
+        {
+          optimizer = new torch::optim::SGD(
+            agent.model.parameters(),
+            torch::optim::SGDOptions(args.lr)
+          );
+        } else if (args.optimizer == "adam")
+        {
+          optimizer = new torch::optim::Adam(
+            agent.model.parameters(),
+            torch::optim::AdamOptions(args.lr)
+          );
+        } else if (args.optimizer == "rmsprop")
+        {
+          optimizer = new torch::optim::RMSprop(
+            agent.model.parameters(),
+            torch::optim::RMSpropOptions(args.lr)
+          );
+        } else {
+          throw std::runtime_error("unknown optimizer");
+        }
 
         if (args.gpu_id >= 0)
         {
@@ -107,6 +132,14 @@ int train(int rank, int size, Args args)
         }
 
         log_debug("%d starting sched %d for %d steps", rank, client_index, schedule_length);
+
+        // We will run some time with this model. We must clear the actions performed by the old model,
+        // as well as the hidden lstm states.
+        agent.clear_actions();
+        agent.hx = torch::zeros({1, 512}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
+        agent.cx = torch::zeros({1, 512}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
+
+        // TODO: the hidden states might need to be sent along side the models
 
         // Run the scheduled work
         int total_steps = 0;
@@ -119,8 +152,8 @@ int train(int rank, int size, Args args)
                 agent.cx = torch::zeros({1, 512}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
             } else {
                 // Detach the hidden and cell states from the computation graph.
-                agent.hx = agent.hx.detach();
-                agent.cx = agent.cx.detach();
+                //agent.hx = agent.hx.detach();
+                //agent.cx = agent.cx.detach();
             }
 
             // Move the model and the environment to the GPU if necessary.
@@ -160,14 +193,14 @@ int train(int rank, int size, Args args)
             {
                 // Compute the discounted return.
                 result = agent.model.forward(torch::TensorList({agent.state.unsqueeze(0), agent.hx, agent.cx}));
-                R = result.toTensorList().get(0).set_requires_grad(true);
+                R = result.toTensorList().get(0).detach();
             }
 
             // Move the discounted return tensor to the GPU if necessary.
             if (args.gpu_id >= 0)
                 R = R.to(torch::kCUDA);
 
-            agent.values.push_back(R.detach()); // possibly no detach
+            agent.values.push_back(R); // possibly no detach
 
             // might not need autograd variable
             //torch::Tensor policy_loss = torch::autograd::Variable(torch::zeros({1}, torch::kFloat32));
@@ -178,6 +211,7 @@ int train(int rank, int size, Args args)
             torch::Tensor value_loss = torch::zeros({1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
             torch::Tensor gae = torch::zeros({1, 1}, torch::TensorOptions().requires_grad(true).dtype(torch::kFloat32));
             torch::Tensor delta, log_prob, value, adv;
+            float total_entropy = 0;
 
             if (args.gpu_id >= 0)
             {
@@ -187,25 +221,30 @@ int train(int rank, int size, Args args)
                 gae = gae.to(torch::kCUDA);
             }
 
-            R = R.detach(); // possibly no detach
+            torch::Tensor advantage;
+
+            //R = R.detach(); // possibly no detach
 
             // Walk through the trajectory in reverse order.
             for (int i = agent.rewards.size() - 1; i >= 0; i--)
             {
                 // Compute the discounted return.
                 R = args.gamma * R + agent.rewards[i];
+                advantage = R - agent.values[i];
 
                 // Compute the value loss.
-                value = agent.values[i];
-                value_loss = value_loss + 0.5 * torch::pow(R - value, 2);
+                value_loss = value_loss + 0.5 * advantage.pow(2);
 
                 // Compute the generalized advantage estimate.
-                delta = agent.rewards[i] + args.gamma * agent.values[i + 1] - agent.values[i];
+                delta = (
+                    agent.rewards[i]
+                    + args.gamma * agent.values[i + 1].data()
+                    - agent.values[i].data()
+                );
+                
                 gae = gae * args.gamma * args.tau + delta; // possibly no detach
 
-                // Compute the policy loss.
-                log_prob = agent.log_probs[i];
-                policy_loss = policy_loss - log_prob * gae.detach();
+                policy_loss = policy_loss - agent.log_probs[i] * gae;
 
                 // Compute the entropy loss, first updating the rolling entropy average.
                 
@@ -228,7 +267,10 @@ int train(int rank, int size, Args args)
 
                 entropy_loss = max(min_entropy, entropy_loss);
                 entropy_loss = min(max_entropy, entropy_loss);
-                std::cout << "entropy " << cur_entropy << " avg " << entropy_avg <<  " factor " << entropy_loss << std::endl;
+                entropy_loss = 0.01f;
+                //std::cout << "entropy " << cur_entropy << " avg " << entropy_avg <<  " factor " << entropy_loss << std::endl;
+                //
+                total_entropy += agent.entropies[i].item<float>();
 
                 policy_loss = policy_loss - entropy_loss * agent.entropies[i];
             }
@@ -239,7 +281,7 @@ int train(int rank, int size, Args args)
 
             // Backpropagate the loss.
             torch::Tensor loss = policy_loss + 0.5f * value_loss;
-            loss.backward();//sum().backward();
+            loss.backward();
 
             //std::cout << "policy_loss grad " << policy_loss.grad() << std::endl;
 
@@ -251,13 +293,15 @@ int train(int rank, int size, Args args)
             torch::nn::utils::clip_grad_norm_(agent.model.parameters(), 40.0f); // TODO: make this a parameter
 
             // Update the model parameters.
-            optimizer.step();
+            optimizer->step();
 
             // Clear the trajectory.
             agent.clear_actions();
 
-            log_debug("train %d step %d loss %f grad %f", rank, total_steps, loss.sum().item<float>(), agent.model.parameters()[0].grad().sum().item<float>());
+            log_debug("train %d step %d loss p %f v %f grad %f ent %f", rank, total_steps, policy_loss.sum().item<float>(), value_loss.sum().item<float>(), agent.model.parameters()[0].grad().sum().item<float>(), total_entropy);
         }
+
+        delete optimizer;
 
         // Send the updated model parameters to the scheduler.
         sendInt(0, rank);

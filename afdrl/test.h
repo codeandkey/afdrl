@@ -9,6 +9,7 @@
 #include "model.h"
 #include "messages.h"
 #include "args.h"
+#include "env.h"
 
 /**
  * Starts a testing client.
@@ -18,6 +19,6 @@
  * @param args The configuration arguments.
  * @return int The exit code.
  */
-int test(int rank, int size, Args args);
+int test(int rank, int size, Args args, std::string rom_path, EnvConfig config);
 
 #endif

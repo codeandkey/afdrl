@@ -16,46 +16,54 @@
 using namespace cv;
 using namespace std;
 
-torch::Tensor observe(ale::ALEInterface& ale)
-{
-  vector<unsigned char> bw;
-  ale.getScreenGrayscale(bw);
-
-  int height = ale.getScreen().height();
-  int width = ale.getScreen().width();
-
-  cv::Mat image(height, width, CV_8UC1, bw.data());
-  cv::Mat resized;
-
-  cv::resize(image, resized, cv::Size(80, 80), cv::INTER_LINEAR);
-
-  return torch::from_blob(resized.data, {1, 80, 80}, torch::TensorOptions().dtype(torch::kByte)).toType(torch::kFloat).div(255);
-}
-
 using namespace ale;
 
-AtariEnv::AtariEnv(const std::string &rom_path, bool display_screen,
-                   int frame_skip, int frame_stack, int max_episode_length, int seed) {
+AtariEnv::AtariEnv(const std::string &rom_path, EnvConfig config, int seed, bool display)
+{
   ale = new ale::ALEInterface();
 
   if (seed == -1)
     seed = time(NULL);
 
   ale->setInt("random_seed", seed);
-  ale->setBool("display_screen", display_screen);
+  ale->setBool("display_screen", display);
   ale->loadROM(rom_path);
 
-  // Get the screen shape parameters from the environment
-  screen_width = 80; // fixed by the image resize routines above
-  screen_height = 80;
-  screen_channels = 1;
+  screen_width = ale->getScreen().width();
+  screen_height = ale->getScreen().height();
+  screen_channels = config.frame_stack;
   num_actions = ale->getMinimalActionSet().size();
 
-  this->frame_skip = frame_skip;
-  this->frame_stack = frame_stack;
-  this->max_episode_length = max_episode_length;
-
+  this->config = config;
   reset();
+}
+
+torch::Tensor AtariEnv::observe()
+{
+  // Get the screen data in full color
+  vector<unsigned char> data;
+  ale->getScreenRGB(data);
+
+  // Convert the screen data to a cv::Mat
+  cv::Mat image(screen_height, screen_width, CV_8UC3, data.data());
+
+  // Convert the RGB to Y channel
+  cv::Mat y_channel;
+  cv::cvtColor(image, y_channel, cv::COLOR_RGB2GRAY);
+
+  // Crop the image with the env config (left, top, right, bottom)
+  cv::Mat cropped = y_channel(cv::Rect(config.crop_x, config.crop_y, config.crop_width, config.crop_height));
+
+  // Resize the image to the desired size
+  cv::Mat resized;
+  cv::resize(cropped, resized, cv::Size(80, 80),
+             cv::INTER_LINEAR);
+
+  // Apply binary threshold
+  cv::threshold(resized, resized, 128, 255, cv::THRESH_BINARY);
+
+  // Convert the cv::Mat to a torch tensor
+  return torch::from_blob(resized.data, {1, 80, 80}, torch::TensorOptions().dtype(torch::kByte)).toType(torch::kFloat).div(255);
 }
 
 AtariEnv::~AtariEnv() { delete ale; }
@@ -66,16 +74,17 @@ torch::Tensor AtariEnv::reset() {
   // Clear the frame skip deque
   frame_stack_deque.clear();
 
-  torch::Tensor obs = observe(*ale);
+  torch::Tensor obs = observe();
 
   // Initialize the frame skip deque with the initial screen
-  for (int i = 0; i < frame_stack; i++) {
+  for (int i = 0; i < config.frame_stack; i++) {
     frame_stack_deque.push_back(obs);
   }
 
   // Return the concatenated frames from the frame skip deque
   std::vector<torch::Tensor> frame_stack_deque_vec(frame_stack_deque.begin(),
                                                   frame_stack_deque.end());
+
   return torch::cat(frame_stack_deque_vec);
 }
 
@@ -86,10 +95,10 @@ std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
   // Perform the action for the number of frame skips
   float reward = 0;
 
-  for (int i = 0; i < frame_skip; i++) {
+  for (int i = 0; i < config.frame_skip; i++) {
     reward += ale->act(actions[action]);
 
-    frame_stack_deque.push_front(observe(*ale));
+    frame_stack_deque.push_front(observe());
     frame_stack_deque.pop_back();
   }
 
@@ -100,76 +109,4 @@ std::tuple<torch::Tensor, float, bool> AtariEnv::step(int action) {
                                                   frame_stack_deque.end());
   return std::make_tuple(torch::cat(frame_stack_deque_vec), reward,
                          terminal);
-}
-
-int AtariEnv::get_num_actions() const { return num_actions; }
-
-int AtariEnv::get_screen_height() const { return screen_height; }
-
-int AtariEnv::get_screen_width() const { return screen_width; }
-
-int AtariEnv::get_screen_channels() const { return screen_channels; }
-
-vector<char> AtariEnv::serialize() const {
-  // Serialize the ALE system state
-  ale::ALEState system_state = ale->cloneSystemState();
-  std::string ale_state_str = system_state.serialize();
-
-  vector<char> state;
-
-  // Get the ALE state string length
-  int ale_state_str_len = ale_state_str.length();
-  int frame_size = frame_stack_deque[0].numel() * sizeof(float);
-
-  // Reserve space for the state vector
-  state.reserve(sizeof(int) + ale_state_str_len + sizeof(float) +
-                frame_stack_deque.size() * frame_size);
-
-  // Write the length of the ALE state string
-  memcpy(state.data(), &ale_state_str_len, sizeof(int));
-
-  // Write the ALE state string (without the null terminator)
-  memcpy(state.data() + sizeof(int), ale_state_str.c_str(), ale_state_str_len);
-
-  // Write the frame skip deque
-  for (int i = 0; i < frame_skip; i++) {
-    // Get the frame data
-    float *frame_data = frame_stack_deque[i]
-                            .to(torch::kFloat)
-                            .contiguous()
-                            .view({-1})
-                            .to(torch::kCPU)
-                            .data_ptr<float>();
-
-    // Write frame data to the state vector
-    memcpy(state.data() + sizeof(int) + ale_state_str_len + i * frame_size,
-           frame_data, frame_size);
-  }
-
-  return state;
-}
-
-void AtariEnv::deserialize(const vector<char> &state) {
-  // Read the length of the ALE state string
-  int ale_state_str_len = *(int *)state.data();
-
-  // Read the ALE state string
-  string ale_state_str(state.data() + sizeof(int), ale_state_str_len);
-
-  // Deserialize the ALE system state
-  ale::ALEState system_state(ale_state_str);
-  ale->restoreSystemState(system_state);
-
-  // Clear the frame skip deque
-  frame_stack_deque.clear();
-
-  // Deserialize the frame skip deque
-  int frame_size = screen_height * screen_width;
-  for (int i = 0; i < frame_stack; i++) {
-    torch::Tensor frame =
-        torch::from_blob((void *)(state.data() + sizeof(int) +
-                                  ale_state_str_len + i * frame_size),
-                         {1, screen_height, screen_width}, torch::kFloat);
-    frame_stack_deque.push_back(frame);
-  }
 }

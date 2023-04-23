@@ -7,6 +7,7 @@
 #define AFDRL_SCHEDULE_H
 
 #include "args.h"
+#include "env.h"
 
 /**
  * Starts the scheduler loop.
@@ -16,6 +17,6 @@
  * @param args The configuration arguments.
  * @return int The exit code.
  */
-int schedule(int rank, int size, Args args);
+int schedule(int rank, int size, Args args, std::string rom_path, EnvConfig config);
 
 #endif // AFDRL_SCHEDULE_H

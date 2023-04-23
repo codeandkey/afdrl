@@ -11,6 +11,18 @@
 #include <deque>
 #include <vector>
 
+struct EnvConfig
+{
+  int frame_skip = 3;
+  int frame_stack = 3;
+  int max_episode_length = 10000;
+
+  int crop_x = 0;
+  int crop_y = 0;
+  int crop_width = 0;
+  int crop_height = 0;
+};
+
 /**
  * This class contains an ALE environment and provides a generic interface to
  * interact with it.
@@ -25,7 +37,7 @@ public:
      * @param frame_skip The number of frames to skip.
      * @param max_episode_length The maximum number of steps per episode.
      */
-    AtariEnv(const std::string& rom_path, bool display_screen, int frame_skip=3, int frame_stack=3, int max_episode_length=10000, int seed=-1);
+    AtariEnv(const std::string& rom_path, EnvConfig config, int seed=-1, bool display=false);
 
     /**
      * Destructs the Atari environment.
@@ -52,28 +64,28 @@ public:
      *
      * @return The number of actions.
      */
-    int get_num_actions() const;
+    int get_num_actions() const { return num_actions; }
 
     /**
      * Get the screen height.
      *
      * @return The screen height.
      */
-    int get_screen_height() const;
+    int get_screen_height() const { return screen_height; }
 
     /**
      * Get the screen width.
      *
      * @return The screen width.
      */
-    int get_screen_width() const;
+    int get_screen_width() const { return screen_width; }
 
     /**
      * Get the screen channels.
      *
      * @return The screen channels.
      */
-    int get_screen_channels() const;
+    int get_screen_channels() const { return screen_channels; }
 
     /**
      * Serializes the environment state into a buffer.
@@ -90,12 +102,21 @@ public:
     void deserialize(const std::vector<char>& buffer);
 
 private:
+    /**
+     * Observes the environment.
+     * 
+     * @return The current state.
+     */
+    torch::Tensor observe();
+
+    // Configuration
+    EnvConfig config;
+
     // ALE environment
     ale::ALEInterface* ale;
 
     // Environment parameters
     int num_actions, screen_height, screen_width, screen_channels;
-    int frame_skip, frame_stack, max_episode_length; 
 
     // Deque of recent observations
     std::deque<torch::Tensor> frame_stack_deque;

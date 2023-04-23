@@ -16,10 +16,10 @@
 
 using namespace std;
 
-int test(int rank, int size, Args args)
+int test(int rank, int size, Args args, std::string rom_path, EnvConfig config)
 {
     // Testing environment
-    AtariEnv env(args.env_name, args.display_test);
+    AtariEnv env(rom_path, config, -1, args.display_test);
 
     // Initialize the model.
     LSTMModel model(
